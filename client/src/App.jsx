@@ -6,8 +6,8 @@ import AuthPage from './components/Auth';
 import AuthenticatedLayout from './components/AuthenticatedLayout';
 import DashboardContent from './components/DashboardContent';
 import OnboardingContent from './components/OnboardingContent';
-import AdminPanel from './components/Admin'; // AdminPanel is the default export from Admin.jsx
-
+import AdminPanel from './components/Admin';
+import AdminDashboard from './components/AdminDashboard';
 
 // Main App component
 export default function App() {
@@ -81,8 +81,14 @@ export default function App() {
         <Route path="/" element={<AuthenticatedLayout user={user} onLogout={handleLogout} />}>
           {/* Child routes render their elements within the parent's Outlet */}
           {/* If user is not logged in, AuthenticatedLayout will handle redirection */}
-          <Route path="dashboard" element={<DashboardContent user={user} />} /> {/* Note: relative path */}
-          <Route path="onboarding" element={<OnboardingContent user={user} />} /> {/* Note: relative path */}
+          <Route path="dashboard" element={
+            user && user.role === 'admin' ? (
+              <AdminDashboard user={user} />
+            ) : (
+              <DashboardContent user={user} />
+            )
+          } />
+          <Route path="onboarding" element={<OnboardingContent user={user} />} />
 
           {/* Admin route with role check - now a parent route for admin sub-routes */}
           <Route
@@ -96,13 +102,11 @@ export default function App() {
               )
             }
           >
-             {/* Nested routes within the AdminPanel */}
-             {/* Default admin route - redirect to pending applications */}
-             {/* These routes will be handled by the Outlet within AdminPanel */}
-             <Route index element={<Navigate to="pending-applications" replace />} />
-             <Route path="pending-applications" element={<AdminPanel.PendingApplications user={user} />} /> {/* Access nested component */}
-             <Route path="application/:applicationId" element={<AdminPanel.ApplicationDetails user={user} />} /> {/* Access nested component */}
-             {/* Add more admin sub-routes here (e.g., /admin/users, /admin/funds) */}
+            {/* Nested routes within the AdminPanel */}
+            {/* Default admin route - show pending applications */}
+            <Route index element={<AdminPanel.PendingApplications user={user} />} />
+            <Route path="pending-applications" element={<AdminPanel.PendingApplications user={user} />} />
+            <Route path="application/:applicationId" element={<AdminPanel.ApplicationDetails user={user} />} />
           </Route>
 
            {/* Add more nested routes for other protected pages */}

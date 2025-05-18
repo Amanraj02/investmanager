@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, Outlet, useParams, useNavigate } from 'react-router-dom';
 
-// Helper function to safely parse JSON arrays
+// Helper function to safely parse JSON arrays from string data
+// Returns an empty array if parsing fails or if result is not an array
 const parseJsonArray = (jsonString) => {
     try {
         const parsed = JSON.parse(jsonString);
@@ -9,8 +10,8 @@ const parseJsonArray = (jsonString) => {
         if (Array.isArray(parsed)) {
             return parsed;
         }
-         // Log a warning only if the parsed result is NOT an array
-         console.warn("JSON.parse result was not an array:", parsed);
+        // Log a warning only if the parsed result is NOT an array
+        console.warn("JSON.parse result was not an array:", parsed);
         return []; // Return empty array if parsing fails or result is not an array
     } catch (e) {
         console.error("Error parsing JSON string:", jsonString, e);
@@ -18,7 +19,8 @@ const parseJsonArray = (jsonString) => {
     }
 };
 
-// Helper function to render file links (display filename only)
+// Helper function to render file links in a user-friendly way
+// Extracts filename from path and creates a clickable link
 const renderFileLink = (filePath) => {
     if (!filePath) return 'No file uploaded';
     // Extract filename from the path string manually (no Node.js 'path' module needed)
@@ -26,11 +28,11 @@ const renderFileLink = (filePath) => {
     const filename = parts[parts.length - 1]; // Get the last part
     // In a real app, you'd need a backend endpoint to serve these files securely
     // For now, just display the filename and simulate a download
-     return <span className="text-indigo-600 cursor-pointer hover:underline" onClick={() => alert(`Simulating download for: ${filePath}`)}>{filename}</span>;
+    return <span className="text-indigo-600 cursor-pointer hover:underline" onClick={() => alert(`Simulating download for: ${filePath}`)}>{filename}</span>;
 };
 
-
 // Main Admin Panel Component - Acts as a layout for admin sub-routes
+// Provides navigation and access control for admin features
 export default function AdminPanel({ user }) {
     // Basic check if user is admin (though routing already handles this)
     if (!user || user.role !== 'admin') {
@@ -56,87 +58,221 @@ export default function AdminPanel({ user }) {
     );
 }
 
-// Component to list pending onboarding applications
+// Component to list and manage pending onboarding applications
+// Includes filtering, assignment management, and status updates
 AdminPanel.PendingApplications = function PendingApplications({ user }) {
-    const [pendingApps, setPendingApps] = useState([]);
+    // State management for applications list and UI
+    const [applications, setApplications] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const navigate = useNavigate(); // Get navigate for redirection
+    const [filter, setFilter] = useState('all'); // 'all', 'pending', 'approved', 'rejected'
+    const [assignmentFilter, setAssignmentFilter] = useState('all'); // 'all', 'assigned', 'unassigned'
+    const [employees, setEmployees] = useState([]); // Add state for employees
+    const navigate = useNavigate();
 
-    // Fetch pending applications from the backend
-    useEffect(() => {
-        const fetchPendingApplications = async () => {
-            setLoading(true);
-            setError(null);
-            const token = localStorage.getItem('token');
+    // Function to fetch all applications from the backend
+    // Handles authentication and error states
+    const fetchApplications = async () => {
+        setLoading(true);
+        setError(null);
+        const token = localStorage.getItem('token');
 
-            if (!token) {
-                setError("Authentication token not found.");
+        if (!token) {
+            setError("Authentication token not found.");
+            setLoading(false);
+            return;
+        }
+
+        try {
+            console.log('Fetching applications...'); // Debug log
+            const response = await fetch('http://localhost:3001/api/admin/onboarding/pending', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Error fetching applications:', response.status, errorText);
+                setError(`Failed to fetch applications: ${errorText}`);
                 setLoading(false);
                 return;
             }
 
-            try {
-                // Fetch pending applications from the backend endpoint
-                const response = await fetch('http://localhost:3001/api/admin/onboarding/pending', {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                    },
-                });
+            const data = await response.json();
+            console.log('Fetched applications data:', data); // Debug log
 
-                 // Check if the response is OK before trying to parse JSON
-                if (!response.ok) {
-                   const errorText = await response.text(); // Read error response as text
-                   console.error('Error fetching pending applications:', response.status, errorText);
-                   setError(`Failed to fetch pending applications: ${errorText}`);
-                   setLoading(false);
-                   return;
-                }
-
-
-                const data = await response.json();
-
-                setPendingApps(data); // Assuming backend returns an array of pending applications
-
-            } catch (err) {
-                console.error('Fetch pending applications error:', err);
-                setError('An error occurred while fetching pending applications.');
-            } finally {
+            // Ensure data is an array
+            if (!Array.isArray(data)) {
+                console.error('Received non-array data:', data);
+                setError('Invalid data format received from server');
                 setLoading(false);
+                return;
             }
-        };
 
-        if (user && user.role === 'admin') {
-             fetchPendingApplications();
+            setApplications(data);
+
+        } catch (err) {
+            console.error('Fetch applications error:', err);
+            setError('An error occurred while fetching applications.');
+        } finally {
+            setLoading(false);
         }
-
-    }, [user]); // Refetch if user changes (shouldn't happen often for admin)
-
-    const handleViewDetails = (applicationId) => {
-        navigate(`/admin/application/${applicationId}`); // Navigate to the details page
     };
 
+    // Function to fetch list of available employees for assignment
+    // Used to populate the employee dropdown
+    const fetchEmployees = async () => {
+        const token = localStorage.getItem('token');
+        if (!token) return;
 
+        try {
+            const response = await fetch('http://localhost:3001/api/admin/employees', {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                console.error('Failed to fetch employees:', response.status);
+                return;
+            }
+
+            const data = await response.json();
+            setEmployees(data);
+        } catch (err) {
+            console.error('Fetch employees error:', err);
+        }
+    };
+
+    // Effect hook to load applications and employees when component mounts
+    // Only runs if user is admin
+    useEffect(() => {
+        if (user && user.role === 'admin') {
+            console.log('Component mounted, fetching applications...'); // Debug log
+            fetchApplications();
+            fetchEmployees();
+        }
+    }, [user]);
+
+    // Effect hook to handle application updates
+    // Listens for custom events to refresh the list
+    useEffect(() => {
+        const handleApplicationUpdate = () => {
+            console.log('Application update detected, refreshing list...');
+            fetchApplications();
+        };
+
+        window.addEventListener('applicationUpdated', handleApplicationUpdate);
+
+        return () => {
+            window.removeEventListener('applicationUpdated', handleApplicationUpdate);
+        };
+    }, []);
+
+    // Navigation handler for viewing application details
+    const handleViewDetails = (applicationId) => {
+        navigate(`/admin/application/${applicationId}`);
+    };
+
+    // Helper function to get employee details by ID
+    // Returns formatted string with name and position
+    const getEmployeeName = (employeeId) => {
+        const employee = employees.find(emp => emp.id === employeeId);
+        return employee ? `${employee.name} (${employee.position})` : 'Unknown Employee';
+    };
+
+    // Filter applications based on selected status and assignment
+    // Combines both filters for refined results
+    const filteredApplications = applications.filter(app => {
+        // Status filter
+        const statusMatch = filter === 'all' || (app.application_status || '').toLowerCase() === filter.toLowerCase();
+        
+        // Assignment filter
+        const assignmentMatch = assignmentFilter === 'all' || 
+            (assignmentFilter === 'assigned' && app.assigned_to_employee_id) ||
+            (assignmentFilter === 'unassigned' && !app.assigned_to_employee_id);
+
+        return statusMatch && assignmentMatch;
+    });
+
+    // Helper function to get appropriate badge color based on status
+    // Used for visual status indication
+    const getStatusBadgeColor = (status) => {
+        switch (status.toLowerCase()) {
+            case 'pending':
+                return 'bg-yellow-100 text-yellow-800';
+            case 'approved':
+                return 'bg-green-100 text-green-800';
+            case 'rejected':
+                return 'bg-red-100 text-red-800';
+            default:
+                return 'bg-gray-100 text-gray-800';
+        }
+    };
+
+    // Render the applications list with filters and actions
     return (
         <div className="space-y-4">
-            <h3 className="text-xl font-semibold text-gray-800">Pending Onboarding Applications</h3>
+            <div className="flex justify-between items-center">
+                <h3 className="text-xl font-semibold text-gray-800">Onboarding Applications</h3>
+                <div className="flex items-center space-x-4">
+                    <select
+                        value={filter}
+                        onChange={(e) => setFilter(e.target.value)}
+                        className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                        <option value="all">All Statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                    </select>
+                    <select
+                        value={assignmentFilter}
+                        onChange={(e) => setAssignmentFilter(e.target.value)}
+                        className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                        <option value="all">All Assignments</option>
+                        <option value="assigned">Assigned</option>
+                        <option value="unassigned">Unassigned</option>
+                    </select>
+                    <button
+                        onClick={fetchApplications}
+                        className="px-3 py-1 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                        Refresh List
+                    </button>
+                </div>
+            </div>
 
-            {loading && <p className="text-blue-600">Loading pending applications...</p>}
+            {loading && <p className="text-blue-600">Loading applications...</p>}
             {error && <p className="text-red-600">Error: {error}</p>}
 
             {!loading && !error && (
-                pendingApps.length > 0 ? (
+                filteredApplications.length > 0 ? (
                     <ul className="space-y-4">
-                        {pendingApps.map(app => (
+                        {filteredApplications.map(app => (
                             <li key={app.id} className="bg-white p-4 rounded-md shadow flex justify-between items-center">
                                 <div>
                                     <p className="font-medium text-gray-900">Application ID: {app.id}</p>
-                                    {/* Display some basic info from the application - adjust based on backend response */}
                                     <p className="text-sm text-gray-600">Submitted by User ID: {app.user_id}</p>
-                                    <p className="text-sm text-gray-600">Status: {app.application_status}</p> {/* Should be 'pending' */}
-                                     <p className="text-sm text-gray-600">Submitted On: {new Date(app.submission_date).toLocaleDateString()}</p>
+                                    <p className="text-sm text-gray-600">
+                                        Status: <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(app.application_status)}`}>
+                                            {app.application_status}
+                                        </span>
+                                    </p>
+                                    <p className="text-sm text-gray-600">Submitted On: {new Date(app.submission_date).toLocaleDateString()}</p>
+                                    {app.assigned_to_employee_id ? (
+                                        <p className="text-sm text-gray-600">
+                                            Assigned to: {getEmployeeName(app.assigned_to_employee_id)}
+                                        </p>
+                                    ) : (
+                                        <p className="text-sm text-gray-600">Not assigned to any employee</p>
+                                    )}
                                 </div>
                                 <button
                                     onClick={() => handleViewDetails(app.id)}
@@ -148,25 +284,27 @@ AdminPanel.PendingApplications = function PendingApplications({ user }) {
                         ))}
                     </ul>
                 ) : (
-                    <p className="text-gray-600">No pending applications found.</p>
+                    <p className="text-gray-600">No applications found.</p>
                 )
             )}
         </div>
     );
 }
 
-// Component to view individual application details and manage it
+// Component to view and manage individual application details
+// Handles employee assignment and status updates
 AdminPanel.ApplicationDetails = function ApplicationDetails({ user }) {
+    // State management for application details and UI
     const { applicationId } = useParams(); // Get application ID from URL params
     const [application, setApplication] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [assignedEmployee, setAssignedEmployee] = useState(''); // State for assigning employee
-    const [employees, setEmployees] = useState([]); // State for list of employees (users with role 'user')
-    const navigate = useNavigate(); // Get navigate for redirection
+    const [employees, setEmployees] = useState([]); // State for list of employees
+    const navigate = useNavigate();
 
-
-     // Fetch application details and employees when the component mounts
+    // Effect hook to load application details and employees
+    // Runs when component mounts or when applicationId changes
     useEffect(() => {
         const fetchApplicationDetails = async () => {
             setLoading(true);
@@ -258,6 +396,8 @@ AdminPanel.ApplicationDetails = function ApplicationDetails({ user }) {
 
     }, [user, applicationId]); // Refetch if user or application ID changes
 
+    // Handler for assigning an employee to the application
+    // Updates backend and local state
     const handleAssignEmployee = async () => {
         if (!assignedEmployee || !applicationId) {
             alert("Please select an employee to assign.");
@@ -265,13 +405,12 @@ AdminPanel.ApplicationDetails = function ApplicationDetails({ user }) {
         }
 
         const token = localStorage.getItem('token');
-         if (!token) {
-             alert("Authentication token not found.");
-             return;
-         }
+        if (!token) {
+            alert("Authentication token not found.");
+            return;
+        }
 
         try {
-            // Call the backend endpoint to assign the employee
             const response = await fetch(`http://localhost:3001/api/admin/onboarding/application/${applicationId}/assign`, {
                 method: 'POST',
                 headers: {
@@ -281,21 +420,22 @@ AdminPanel.ApplicationDetails = function ApplicationDetails({ user }) {
                 body: JSON.stringify({ assignedToEmployeeId: parseInt(assignedEmployee, 10) })
             });
 
-             // Check if the response is OK before trying to parse JSON
             if (!response.ok) {
-               const errorData = await response.json(); // Assuming error response is JSON
-               console.error('Failed to assign employee:', response.status, errorData.error);
-               alert(`Failed to assign employee: ${errorData.error || response.statusText}`);
-               return; // Stop execution if response is not OK
+                const errorData = await response.json();
+                console.error('Failed to assign employee:', response.status, errorData.error);
+                alert(`Failed to assign employee: ${errorData.error || response.statusText}`);
+                return;
             }
 
             const result = await response.json();
-
             alert('Employee assigned successfully!');
-            // Update local state or refetch details to show the assigned employee
+            
             if (application) {
                 setApplication({ ...application, assigned_to_employee_id: parseInt(assignedEmployee, 10) });
             }
+
+            // Dispatch event to notify that an application was updated
+            window.dispatchEvent(new Event('applicationUpdated'));
 
         } catch (err) {
             console.error('Assign employee error:', err);
@@ -303,7 +443,9 @@ AdminPanel.ApplicationDetails = function ApplicationDetails({ user }) {
         }
     };
 
-     const handleUpdateStatus = async (newStatus) => {
+     // Handler for updating application status
+    // Updates backend and local state, may navigate back to list
+    const handleUpdateStatus = async (newStatus) => {
         if (!applicationId || !newStatus) {
              alert("Invalid status provided.");
              return;
@@ -316,7 +458,6 @@ AdminPanel.ApplicationDetails = function ApplicationDetails({ user }) {
          }
 
         try {
-            // Call the backend endpoint to update the application status
             const response = await fetch(`http://localhost:3001/api/admin/onboarding/application/${applicationId}/status`, {
                 method: 'POST',
                 headers: {
@@ -342,13 +483,21 @@ AdminPanel.ApplicationDetails = function ApplicationDetails({ user }) {
                 setApplication({ ...application, status: newStatus });
             }
 
+            // Dispatch event to notify that an application was updated
+            window.dispatchEvent(new Event('applicationUpdated'));
+
+            // Only navigate back to pending applications if the status is not 'pending'
+            if (newStatus !== 'pending') {
+                navigate('/admin/pending-applications');
+            }
+
         } catch (err) {
             console.error('Update status error:', err);
             alert('An error occurred while updating status.');
         }
     };
 
-
+    // Loading and error states
     if (loading) {
         return <p className="text-blue-600">Loading application details...</p>;
     }
@@ -361,7 +510,7 @@ AdminPanel.ApplicationDetails = function ApplicationDetails({ user }) {
         return <p className="text-gray-600">Application details not found.</p>;
     }
 
-
+    // Render the application details view with actions
     return (
         <div className="space-y-6">
             <h3 className="text-xl font-semibold text-gray-800">Application Details (ID: {application.id})</h3>
@@ -442,7 +591,7 @@ AdminPanel.ApplicationDetails = function ApplicationDetails({ user }) {
                     >
                         <option value="">-- Select Employee --</option>
                         {employees.map(emp => (
-                            <option key={emp.id} value={emp.id}>{emp.username}</option> 
+                            <option key={emp.id} value={emp.id}>{emp.name} - {emp.position}</option>
                         ))}
                     </select>
                     <button

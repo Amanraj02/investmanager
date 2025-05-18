@@ -1,24 +1,37 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-// Import recharts components
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 
-// Basic Dashboard Content Component
 export default function DashboardContent({ user }) {
   const [dashboardMessage, setDashboardMessage] = useState('');
   const [loadingDashboard, setLoadingDashboard] = useState(false);
-  const [onboardingStatus, setOnboardingStatus] = useState('unknown'); // State for onboarding status
+  const [onboardingStatus, setOnboardingStatus] = useState('unknown'); 
 
-  // Dummy data for fund performance
-  const dummyFundPerformance = {
-    lastMonth: '+2.5%',
-    lastYear: '+15.8%',
-    // Add more dummy data as needed
-  };
+ // Dummy data for fund performance
+  const fundDataList = [
+    { fundName:"Growth Fund",lastMonth: "+3.5%", lastYear: "+12.4%" },
+    { fundName:"Debt Fund",lastMonth: "+2.1%", lastYear: "+9.8%" },
+    { fundName:"Flexi Cap Fund",lastMonth: "+4.2%", lastYear: "+15.3%" },
+  ];
+const [currentIndex, setCurrentIndex] = useState(0);
+  const [fade, setFade] = useState(true);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFade(false);
+      setTimeout(() => {
+        setCurrentIndex((prevIndex) => (prevIndex + 1) % fundDataList.length);
+        setFade(true); 
+      }, 500); 
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [fundDataList.length]);
+
+  const currentFund = fundDataList[currentIndex];
 
   // Dummy data for the investment performance chart
-  // This represents a simplified time series of portfolio value or index performance
   const performanceData = [
     { name: 'Jan', value: 4000 },
     { name: 'Feb', value: 3000 },
@@ -118,7 +131,6 @@ export default function DashboardContent({ user }) {
   useEffect(() => {
     if (user) { // Only fetch if user is authenticated
       fetchDashboardData();
-      // Only fetch onboarding status if the user is NOT an admin
       if (user.role !== 'admin') {
          fetchOnboardingStatus();
       }
@@ -128,12 +140,12 @@ export default function DashboardContent({ user }) {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
+      <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
       {user ? (
         // Wrap the content inside the conditional with a single div
         <div className="space-y-6"> {/* Added this wrapping div */}
-          <p className="text-gray-700">Welcome, {user.username}!</p>
-          <p className="text-gray-700">Your role is: {user.role}</p>
+          <p className="text-gray-700 font-bold ">Welcome, {user.username}!</p>
+          {/* <p className="text-gray-700">Your role is: {user.role}</p> */}
 
           {/* Display Onboarding Status - Only for non-admin users */}
           {user.role !== 'admin' && (
@@ -160,16 +172,14 @@ export default function DashboardContent({ user }) {
             dashboardMessage && <p className="text-gray-600">{dashboardMessage}</p>
           )}
 
-          {/* Fund Performance Section */}
-          <div className="bg-white p-6 rounded-lg shadow">
-             <h3 className="text-xl font-semibold text-gray-800 mb-4">Fund Performance</h3>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-600">
-                <p><strong>Last 1 Month:</strong> <span className="font-semibold text-green-600">{dummyFundPerformance.lastMonth}</span></p>
-                <p><strong>Last 1 Year:</strong> <span className="font-semibold text-green-600">{dummyFundPerformance.lastYear}</span></p>
-                {/* Add more performance metrics here */}
-             </div>
+          <div className={`bg-white p-6 rounded-lg shadow transform transition-all duration-500 ease-in-out ${
+          fade ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4"}`}  >
+            <h3 className="text-xl font-semibold text-gray-800 mb-4">{currentFund.fundName} Performance</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-600">
+              <p><strong>Last 1 Month:</strong>{" "}<span className="font-semibold text-green-600">{currentFund.lastMonth}</span></p>
+              <p><strong>Last 1 Year:</strong>{" "}<span className="font-semibold text-green-600">{currentFund.lastYear}</span></p>
+              </div>
           </div>
-
 
           {/* Investment Performance Chart */}
            <div className="bg-white p-6 rounded-lg shadow col-span-1 md:col-span-2">

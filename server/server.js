@@ -1,57 +1,69 @@
-// Import necessary modules
-const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
-const bodyParser = require('body-parser');
-const cors = require('cors');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const multer = require('multer'); // Import multer for file uploads
-const path = require('path'); // Import path module
-const fs = require('fs'); // Import file system module for file cleanup
+// =============================================
+// Server Configuration and Dependencies
+// =============================================
 
-// Create an Express application instance
+// Import necessary modules for the server
+const express = require('express');          // Web framework for Node.js
+const sqlite3 = require('sqlite3').verbose(); // SQLite database driver
+const bodyParser = require('body-parser');   // Parse incoming request bodies
+const cors = require('cors');               // Enable Cross-Origin Resource Sharing
+const bcrypt = require('bcrypt');           // Password hashing
+const jwt = require('jsonwebtoken');        // JSON Web Token for authentication
+const multer = require('multer');           // Handle file uploads
+const path = require('path');               // File path utilities
+const fs = require('fs');                   // File system operations
+
+// Initialize Express application
 const app = express();
-const port = 3001; // Choose a port for your backend
+const port = 3001; // Server port
 
-// Define a secret key for JWT signing (replace with a strong, unique key in production)
-const jwtSecret = process.env.JWT_SECRET || 'your_super_secret_jwt_key'; // Use environment variable in production
+// JWT configuration
+// In production, use environment variable for the secret key
+const jwtSecret = process.env.JWT_SECRET || 'your_super_secret_jwt_key';
 
-// Middleware
-app.use(cors()); // Enable CORS for all origins (adjust in production)
-// Use extended: true to allow parsing of complex objects from form data
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+// =============================================
+// Middleware Configuration
+// =============================================
 
+// Enable CORS for all origins (configure appropriately for production)
+app.use(cors());
 
-// Configure Multer for file uploads
-// Set up storage for uploaded files
+// Configure body parsing middleware
+app.use(bodyParser.json());  // Parse JSON bodies
+app.use(bodyParser.urlencoded({ extended: true })); // Parse URL-encoded bodies
+
+// =============================================
+// File Upload Configuration
+// =============================================
+
+// Configure Multer for handling file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // Define the directory where files will be stored
-    // Ensure this directory exists or create it
+    // Set upload directory
     const uploadPath = path.join(__dirname, 'uploads');
-    // You might want to create subdirectories based on user ID or application ID later
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
-    // Define how files will be named
-    // Use a unique name to avoid conflicts (e.g., timestamp + original name)
+    // Generate unique filename using timestamp
     cb(null, `${Date.now()}-${file.originalname}`);
   }
 });
 
-// Create the Multer instance
+// Create Multer instance with storage configuration
 const upload = multer({ storage: storage });
 
+// =============================================
+// Database Initialization
+// =============================================
 
-// Initialize SQLite database
+// Initialize SQLite database connection
 const db = new sqlite3.Database('./investment_platform.db', (err) => {
   if (err) {
     console.error('Error opening database:', err.message);
   } else {
     console.log('Connected to the SQLite database.');
 
-    // Create users table if it doesn't exist
+    // Create users table with role-based access control
     db.run(`CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
@@ -62,24 +74,27 @@ const db = new sqlite3.Database('./investment_platform.db', (err) => {
         console.error('Error creating users table:', createTableErr.message);
       } else {
         console.log('Users table checked/created.');
-        // Optional: Insert a default admin user if needed (consider hashing the password)
-        // bcrypt.hash('adminpassword123', 10, (hashErr, hashedPassword) => { // Hash a strong password
-        //   if (!hashErr) {
-        //     db.run(`INSERT OR IGNORE INTO users (username, password, role) VALUES (?, ?, ?)`, ['admin', hashedPassword, 'admin'], (insertErr) => {
-        //       if (insertErr) {
-        //         console.error('Error inserting default admin user:', insertErr.message);
-        //       } else {
-        //         console.log('Default admin user checked/inserted.');
-        //       }
-        //     });
-        //   } else {
-        //     console.error('Error hashing default admin password:', hashErr.message);
-        //   }
-        // });
+        // Create default admin user
+        bcrypt.hash('Admin@123', 10, (hashErr, hashedPassword) => {
+          if (!hashErr) {
+            db.run(`INSERT OR IGNORE INTO users (username, password, role) VALUES (?, ?, ?)`, 
+              ['admin@investmanager.com', hashedPassword, 'admin'], 
+              (insertErr) => {
+                if (insertErr) {
+                  console.error('Error inserting admin user:', insertErr.message);
+                } else {
+                  console.log('Admin user checked/inserted.');
+                }
+            });
+          } else {
+            console.error('Error hashing admin password:', hashErr.message);
+          }
+        });
       }
     });
 
-    // Create onboarding_applications table if it doesn't exist
+    // Create onboarding applications table
+    // Stores all client onboarding information and documents
     db.run(`CREATE TABLE IF NOT EXISTS onboarding_applications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
@@ -113,90 +128,98 @@ const db = new sqlite3.Database('./investment_platform.db', (err) => {
       }
     });
 
-     // Create admin_tasks table if it doesn't exist (for workflow)
-     db.run(`CREATE TABLE IF NOT EXISTS admin_tasks (
-       id INTEGER PRIMARY KEY AUTOINCREMENT,
-       application_id INTEGER NOT NULL,
-       assigned_to_employee_id INTEGER NULL, -- NULL if not assigned
-       status TEXT DEFAULT 'open', -- e.g., 'open', 'in_progress', 'completed'
-       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-       FOREIGN KEY (application_id) REFERENCES onboarding_applications(id),
-       FOREIGN KEY (assigned_to_employee_id) REFERENCES users(id) -- Assuming employees are also users
-     )`, (createTableErr) => {
-       if (createTableErr) {
-         console.error('Error creating admin_tasks table:', createTableErr.message);
-       } else {
-         console.log('Admin tasks table checked/created.');
-       }
-     });
+    // Create admin tasks table for workflow management
+    // Tracks tasks related to onboarding applications
+    db.run(`CREATE TABLE IF NOT EXISTS admin_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      application_id INTEGER NOT NULL,
+      assigned_to_employee_id INTEGER NULL, -- NULL if not assigned
+      status TEXT DEFAULT 'open', -- e.g., 'open', 'in_progress', 'completed'
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (application_id) REFERENCES onboarding_applications(id),
+      FOREIGN KEY (assigned_to_employee_id) REFERENCES users(id)
+    )`, (createTableErr) => {
+      if (createTableErr) {
+        console.error('Error creating admin_tasks table:', createTableErr.message);
+      } else {
+        console.log('Admin tasks table checked/created.');
+      }
+    });
 
-     // --- New Employees Table ---
-     db.run(`CREATE TABLE IF NOT EXISTS employees (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        position TEXT NOT NULL
-     )`, (createTableErr) => {
-        if (createTableErr) {
-            console.error('Error creating employees table:', createTableErr.message);
-        } else {
-            console.log('Employees table checked/created.');
-            // Insert fixed placeholder employees if they don't exist
-            const insertEmployeesSql = `
-                INSERT OR IGNORE INTO employees (id, name, position) VALUES
-                (1, 'Alice Smith', 'Onboarding Specialist'),
-                (2, 'Bob Johnson', 'Compliance Officer'),
-                (3, 'Charlie Brown', 'Client Relations'),
-                (4, 'Diana Prince', 'Senior Analyst'),
-                (5, 'Ethan Hunt', 'Operations Manager');
-            `;
-             db.run(insertEmployeesSql, [], (insertErr) => {
-                if (insertErr) {
-                    console.error('Error inserting placeholder employees:', insertErr.message);
-                } else {
-                    console.log('Placeholder employees checked/inserted.');
-                }
-             });
-        }
-     });
-     // --- End New Employees Table ---
+    // Create employees table for staff management
+    // Stores information about employees who can be assigned to tasks
+    db.run(`CREATE TABLE IF NOT EXISTS employees (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      position TEXT NOT NULL
+    )`, (createTableErr) => {
+      if (createTableErr) {
+        console.error('Error creating employees table:', createTableErr.message);
+      } else {
+        console.log('Employees table checked/created.');
+        // Insert default employees
+        const insertEmployeesSql = `
+          INSERT OR IGNORE INTO employees (id, name, position) VALUES
+          (1, 'Alice Smith', 'Onboarding Specialist'),
+          (2, 'Bob Johnson', 'Compliance Officer'),
+          (3, 'Charlie Brown', 'Client Relations'),
+          (4, 'Diana Prince', 'Senior Analyst'),
+          (5, 'Ethan Hunt', 'Operations Manager');
+        `;
+        db.run(insertEmployeesSql, [], (insertErr) => {
+          if (insertErr) {
+            console.error('Error inserting placeholder employees:', insertErr.message);
+          } else {
+            console.log('Placeholder employees checked/inserted.');
+          }
+        });
+      }
+    });
   }
 });
 
-// Middleware to verify JWT (for protected routes)
+// =============================================
+// Authentication Middleware
+// =============================================
+
+// Middleware to verify JWT tokens for protected routes
 const authenticateJWT = (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Get token from "Bearer TOKEN" format
+  const token = authHeader && authHeader.split(' ')[1]; // Extract token from Bearer format
 
   if (token == null) {
-    return res.sendStatus(401); // If no token, unauthorized
+    return res.sendStatus(401); // Unauthorized if no token
   }
 
   jwt.verify(token, jwtSecret, (err, user) => {
     if (err) {
-      return res.sendStatus(403); // If token is invalid, forbidden
+      return res.sendStatus(403); // Forbidden if token is invalid
     }
-    req.user = user; // Attach user payload to request object
-    next(); // Proceed to the next middleware/route handler
+    req.user = user; // Attach user data to request
+    next(); // Continue to next middleware/route
   });
 };
 
-// Middleware to check if the user has the 'admin' role
+// Middleware to check for admin role
 const isAdmin = (req, res, next) => {
-    if (req.user && req.user.role === 'admin') {
-        next(); // User is admin, proceed
-    } else {
-        res.sendStatus(403); // User is not admin, forbidden
-    }
+  if (req.user && req.user.role === 'admin') {
+    next(); // Allow access for admin users
+  } else {
+    res.sendStatus(403); // Forbidden for non-admin users
+  }
 };
 
+// =============================================
+// API Routes
+// =============================================
 
-// Basic route to check if the server is running
+// Health check endpoint
 app.get('/', (req, res) => {
   res.send('Investment Platform Backend is running!');
 });
 
-// Endpoint for user signup
+// User registration endpoint
 app.post('/api/signup', (req, res) => {
   const { username, password } = req.body;
 
@@ -204,18 +227,17 @@ app.post('/api/signup', (req, res) => {
     return res.status(400).json({ error: 'Username and password are required' });
   }
 
-  // Hash the password using bcrypt
+  // Hash password before storing
   bcrypt.hash(password, 10, (hashErr, hashedPassword) => {
     if (hashErr) {
       console.error('Error hashing password:', hashErr.message);
       return res.status(500).json({ error: 'Error processing password' });
     }
 
-    // Insert the new user with the hashed password into the database
+    // Insert new user into database
     const insertSql = 'INSERT INTO users (username, password) VALUES (?, ?)';
     db.run(insertSql, [username, hashedPassword], function(err) {
       if (err) {
-        // Check if the error is due to a duplicate username
         if (err.message.includes('UNIQUE constraint failed')) {
           res.status(409).json({ error: 'Username already exists' });
         } else {
@@ -229,8 +251,7 @@ app.post('/api/signup', (req, res) => {
   });
 });
 
-
-// Endpoint for user login
+// User login endpoint
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
 
@@ -238,6 +259,7 @@ app.post('/api/login', (req, res) => {
     return res.status(400).json({ error: 'Username and password are required' });
   }
 
+  // Verify user credentials
   const selectSql = 'SELECT * FROM users WHERE username = ?';
   db.get(selectSql, [username], (err, row) => {
     if (err) {
@@ -306,7 +328,6 @@ app.get('/api/user/onboarding-status/:userId', authenticateJWT, (req, res) => {
     });
 });
 
-
 // Protected endpoint for client onboarding submission
 // 'fields' handles non-file fields, 'files' handles file fields
 app.post('/api/onboarding', authenticateJWT, upload.fields([
@@ -338,7 +359,6 @@ app.post('/api/onboarding', authenticateJWT, upload.fields([
   const investmentsOwnedJson = JSON.stringify(formData.investmentsOwned || []);
   const selectedFundsJson = JSON.stringify(formData.selectedFunds || []);
   // termsAccepted is already a string 'true' or 'false' from FormData
-
 
   // Insert onboarding data into the database
   const insertSql = `INSERT INTO onboarding_applications (
@@ -396,46 +416,40 @@ app.post('/api/onboarding', authenticateJWT, upload.fields([
     });
     // --- End Workflow Task Creation ---
 
-
     res.status(201).json({ message: 'Onboarding application submitted successfully', applicationId: this.lastID, status: 'pending' });
   });
 });
-
 
 // --- Admin Endpoints ---
 
 // Protected endpoint to get a list of all pending onboarding applications for admin
 app.get('/api/admin/onboarding/pending', authenticateJWT, isAdmin, (req, res) => {
-    // Query the database to join onboarding applications with admin tasks
-    // Filter for applications with status 'pending' and tasks with status 'open'
-    // This ensures we only list applications that require admin review and haven't been assigned/closed yet
+    // Query the database to get all applications
     const selectSql = `
         SELECT
             oa.id,
             oa.user_id,
             oa.full_name,
             oa.submission_date,
-            oa.status as application_status, -- Alias to avoid conflict with task status
+            oa.status as application_status,
             at.id as task_id,
             at.status as task_status,
             at.assigned_to_employee_id
         FROM
             onboarding_applications oa
-        JOIN
+        LEFT JOIN
             admin_tasks at ON oa.id = at.application_id
-        WHERE
-            oa.status = 'pending' AND at.status = 'open'
         ORDER BY
-            oa.submission_date ASC -- Order by submission date, oldest first
+            oa.submission_date DESC
     `;
 
     db.all(selectSql, [], (err, rows) => {
         if (err) {
-            console.error('Error retrieving pending applications:', err.message);
-            return res.status(500).json({ error: 'Error fetching pending applications.' });
+            console.error('Error retrieving applications:', err.message);
+            return res.status(500).json({ error: 'Error fetching applications.' });
         }
 
-        // Return the list of pending applications
+        // Return the list of applications
         res.json(rows);
     });
 });
@@ -616,11 +630,9 @@ app.post('/api/admin/onboarding/application/:applicationId/status', authenticate
         });
         // --- End Optional Task Status Update ---
 
-
         res.json({ message: 'Application status updated successfully', applicationId: applicationId, newStatus: newStatus });
     });
 });
-
 
 // Start the server
 app.listen(port, () => {

@@ -88,12 +88,12 @@ function LoginForm({ onSwitchToSignup, onAuthSuccess, onAuthError }) {
       <h2 className="text-2xl font-bold text-center text-gray-900">Sign in to your account</h2>
       <div>
         <label htmlFor="username" className="block text-sm font-medium text-gray-700">
-          Username
+          Email
         </label>
         <input
           id="username"
           name="username"
-          type="text"
+          type="email"
           autoComplete="username"
           required
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
@@ -196,12 +196,12 @@ function SignupForm({ onSwitchToLogin, onAuthSuccess, onAuthError }) {
       <h2 className="text-2xl font-bold text-center text-gray-900">Create a new account</h2>
        <div>
         <label htmlFor="new-username" className="block text-sm font-medium text-gray-700">
-          Username
+          Email
         </label>
         <input
           id="new-username"
           name="new-username"
-          type="text"
+          type="email"
           autoComplete="username"
           required
           className="w-full px-3 py-2 mt-1 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"

@@ -1,37 +1,36 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Toast from './Toast';
 
 // Include html2pdf.js library (add this script tag to your public/index.html or equivalent)
 // <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
-
-// Client Onboarding Module - Multi-step Form
 export default function OnboardingContent({ user }) {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     // Section 1: Basic Details
-    fullName: user?.username || '', // Pre-fill from user data
+    fullName:  '', 
     govtIdNumber: '',
     mobile: '',
-    email: user?.username || '', // Pre-fill from user data (assuming username is email or similar)
+    email: user?.username || '', // Pre-fill from user data 
     // Section 2: Investment Profile
     timeHorizon: '',
     riskTolerance: '',
-    investmentsOwned: [], // Array for checkboxes
-    acceptableAnnualReturn: '', // Radio button value
+    investmentsOwned: [], 
+    acceptableAnnualReturn: '', 
     // Section 3: Client Details
     dob: '',
     nationality: '',
     address: '',
     clientType: '',
-    govtIdFile: null, // File object
-    contactDetails: '', // Assuming this is additional contact info
+    govtIdFile: null, 
+    contactDetails: '', 
     // Section 4: Financial Details
     sourceOfFunds: '',
     occupationDetails: '',
-    incomeProofFile: null, // File object
+    incomeProofFile: null, 
     // Section 5: Fund Selection
-    selectedFunds: [], // Array of selected funds with amounts
+    selectedFunds: [], 
   });
 
   const [availableFunds, setAvailableFunds] = useState([]);
@@ -39,11 +38,12 @@ export default function OnboardingContent({ user }) {
   const [isSubmitting, setIsSubmitting] = useState(false); // State for submission loading
   const summaryRef = useRef(null); // Ref for the summary content element
   const navigate = useNavigate(); // Get the navigate function
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false); // Add this state for PDF generation loading
+  const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
 
 
   // Simulate fetching funds based on risk tolerance whenever it changes
   useEffect(() => {
-    // In a real app, you would make an API call here
     console.log("Risk Tolerance changed:", formData.riskTolerance);
     let funds = [];
     switch (formData.riskTolerance) {
@@ -114,30 +114,36 @@ export default function OnboardingContent({ user }) {
       });
   };
 
+  const showToast = (message, type = 'error') => {
+    setToast({ show: true, message, type });
+  };
+
+  const hideToast = () => {
+    setToast({ show: false, message: '', type: 'error' });
+  };
 
   const nextStep = () => {
     // Basic validation before moving to the next step
     if (step === 1 && (!formData.fullName || !formData.govtIdNumber || !formData.mobile || !formData.email)) {
-      alert('Please fill in all basic details.');
+      showToast('Please fill in all basic details.');
       return;
     }
-     if (step === 2 && (!formData.timeHorizon || !formData.riskTolerance || formData.acceptableAnnualReturn === '')) {
-       alert('Please complete your investment profile.');
-       return;
-     }
-     if (step === 3 && (!formData.dob || !formData.nationality || !formData.address || !formData.clientType || !formData.govtIdFile)) {
-        alert('Please complete client details and upload your Govt ID.');
-        return;
-     }
-     if (step === 4 && (!formData.sourceOfFunds || !formData.occupationDetails || !formData.incomeProofFile)) {
-         alert('Please complete financial details and upload your Income Proof.');
-         return;
-     }
-     if (step === 5 && formData.selectedFunds.length === 0) {
-         alert('Please select at least one fund and enter an investment amount.');
-         return;
-     }
-     // Add more specific validation for each step as needed
+    if (step === 2 && (!formData.timeHorizon || !formData.riskTolerance || formData.acceptableAnnualReturn === '')) {
+      showToast('Please complete your investment profile.');
+      return;
+    }
+    if (step === 3 && (!formData.dob || !formData.nationality || !formData.address || !formData.clientType || !formData.govtIdFile)) {
+      showToast('Please complete client details and upload your Govt ID.');
+      return;
+    }
+    if (step === 4 && (!formData.sourceOfFunds || !formData.occupationDetails || !formData.incomeProofFile)) {
+      showToast('Please complete financial details and upload your Income Proof.');
+      return;
+    }
+    if (step === 5 && formData.selectedFunds.length === 0) {
+      showToast('Please select at least one fund and enter an investment amount.');
+      return;
+    }
 
     if (step < 6) { // Now 6 steps including summary
       setStep(step + 1);
@@ -155,7 +161,7 @@ export default function OnboardingContent({ user }) {
 
     // Check if terms are accepted before submitting
     if (!termsAccepted && step === 6) {
-        alert("Please accept the Terms and Conditions to submit.");
+        showToast("Please accept the Terms and Conditions to submit.");
         return;
     }
 
@@ -220,7 +226,7 @@ export default function OnboardingContent({ user }) {
              errorMessage = `HTTP error! status: ${response.status}`;
         }
         console.error('Onboarding submission failed:', errorMessage);
-        alert(`Error submitting onboarding form: ${errorMessage}`);
+        showToast(errorMessage, 'error');
         return; // Stop execution if response is not OK
       }
       // --- End Improved Error Handling ---
@@ -229,35 +235,128 @@ export default function OnboardingContent({ user }) {
       const result = await response.json(); // Now safe to parse as JSON if response.ok
 
       console.log('Onboarding submission successful:', result);
-      alert('Onboarding form submitted successfully!');
+      showToast('Onboarding form submitted successfully!');
       // Redirect user to dashboard after successful submission
       navigate('/dashboard');
 
     } catch (error) {
       console.error('Onboarding fetch error:', error);
-      alert('An error occurred during onboarding submission.');
+      showToast('An error occurred during onboarding submission.', 'error');
     } finally {
       setIsSubmitting(false); // Stop submission loading
     }
   };
 
   // Handle PDF download
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
+    const html2pdf = window.html2pdf;
+    if (!html2pdf) {
+      console.error('html2pdf library not loaded');
+      showToast('PDF generation library not loaded. Please refresh the page and try again.', 'error');
+      return;
+    }
+
     const element = summaryRef.current;
-     if (element) {
-        // Use html2pdf library to generate PDF
-        // Ensure the script tag for html2pdf.js is added to your public/index.html
-        // Add some styling for the PDF if needed (e.g., print styles)
+    if (!element) {
+      console.error("Summary element not found for PDF generation.");
+      return;
+    }
+
+    try {
+      setIsGeneratingPdf(true);
+
+      // Create a wrapper to center the content
+      const wrapper = document.createElement('div');
+      wrapper.style.width = '100%';
+      wrapper.style.display = 'flex';
+      wrapper.style.justifyContent = 'center';
+      wrapper.style.alignItems = 'center';
+      wrapper.style.padding = '0 30mm'; // Increased horizontal padding
+      wrapper.appendChild(element.cloneNode(true));
+
         const opt = {
-          margin:       10,
-          filename:     'onboarding_summary.pdf',
-          image:        { type: 'jpeg', quality: 0.98 },
-          html2canvas:  { scale: 2 },
-          jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        };
-        html2pdf().from(element).set(opt).save();
-     } else {
-       console.error("Summary element not found for PDF generation.");
+        margin: [5, 10, 5, 10], // Increased left and right margins
+        filename: 'onboarding_summary.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { 
+          scale: 1.5,
+          useCORS: true,
+          logging: true,
+          backgroundColor: '#ffffff',
+          letterRendering: true,
+          allowTaint: true,
+          scrollY: 0,
+          scrollX: 0,
+          windowWidth: element.scrollWidth,
+          windowHeight: element.scrollHeight
+        },
+        jsPDF: { 
+          unit: 'mm', 
+          format: 'a4', 
+          orientation: 'landscape',
+          compress: true
+        }
+      };
+
+      // Add a style override to handle colors and ensure proper sizing
+      const styleOverride = document.createElement('style');
+      styleOverride.textContent = `
+        * {
+          color: #000000 !important;
+          background-color: #ffffff !important;
+          border-color: #cccccc !important;
+          max-width: 100% !important;
+        }
+        .text-gray-600, .text-gray-700, .text-gray-800, .text-gray-900 {
+          color: #000000 !important;
+        }
+        .bg-blue-600, .bg-indigo-600, .bg-green-600 {
+          background-color: #ffffff !important;
+          color: #000000 !important;
+        }
+        .border {
+          border: 1px solid #cccccc !important;
+        }
+        .space-y-6 {
+          margin-top: 0.75rem !important;
+          margin-bottom: 0.75rem !important;
+          padding-left: 10mm !important; /* Added left padding */
+          padding-right: 10mm !important; /* Added right padding */
+        }
+        .space-y-4 {
+          margin-top: 0.5rem !important;
+          margin-bottom: 0.5rem !important;
+        }
+        .p-4 {
+          padding: 0.5rem !important;
+        }
+        .mt-4 {
+          margin-top: 0.5rem !important;
+        }
+        .mt-6 {
+          margin-top: 0.75rem !important;
+        }
+        .pb-2 {
+          padding-bottom: 0.25rem !important;
+        }
+        .space-y-6 {
+          width: 100% !important;
+          max-width: 700px !important; /* Reduced max-width */
+          margin-left: auto !important;
+          margin-right: auto !important;
+        }
+      `;
+      document.head.appendChild(styleOverride);
+
+      await html2pdf().set(opt).from(wrapper).save();
+      
+      // Clean up
+      document.head.removeChild(styleOverride);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      showToast('Failed to generate PDF. Please try again.', 'error');
+    } finally {
+      setIsGeneratingPdf(false);
      }
   };
 
@@ -271,19 +370,19 @@ export default function OnboardingContent({ user }) {
             <h3 className="text-xl font-semibold text-gray-800">Section 1: Basic Details</h3>
             <div>
               <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">Full Name</label>
-              <input type="text" name="fullName" id="fullName" value={formData.fullName} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+              <input type="text" name="fullName" id="fullName" value={formData.fullName} onChange={handleInputChange} required className="mt-1 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
             </div>
              <div>
               <label htmlFor="govtIdNumber" className="block text-sm font-medium text-gray-700">Govt ID Number</label>
-              <input type="text" name="govtIdNumber" id="govtIdNumber" value={formData.govtIdNumber} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+              <input type="text" name="govtIdNumber" id="govtIdNumber" value={formData.govtIdNumber} onChange={handleInputChange} required className="mt-1 p-2  block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
             </div>
              <div>
               <label htmlFor="mobile" className="block text-sm font-medium text-gray-700">Mobile</label>
-              <input type="tel" name="mobile" id="mobile" value={formData.mobile} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+              <input type="number" name="mobile" id="mobile" value={formData.mobile} onChange={handleInputChange} required className="mt-1 p-2  block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
             </div>
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
-              <input type="email" name="email" id="email" value={formData.email} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+              <input type="email" name="email" id="email" value={formData.email} onChange={handleInputChange} required className="mt-1 p-2  block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
             </div>
           </div>
         );
@@ -293,7 +392,7 @@ export default function OnboardingContent({ user }) {
             <h3 className="text-xl font-semibold text-gray-800">Section 2: Investment Profile</h3>
             <div>
               <label htmlFor="timeHorizon" className="block text-sm font-medium text-gray-700">Time Horizon for Investment (in years)</label>
-              <input type="number" name="timeHorizon" id="timeHorizon" value={formData.timeHorizon} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+              <input type="number" name="timeHorizon" id="timeHorizon" value={formData.timeHorizon} onChange={handleInputChange} required className="mt-1 p-2  block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
             </div>
              <div>
               <label className="block text-sm font-medium text-gray-700">Risk Tolerance</label>
@@ -366,42 +465,68 @@ export default function OnboardingContent({ user }) {
             <h3 className="text-xl font-semibold text-gray-800">Section 3: Client Details</h3>
              <div>
               <label htmlFor="dob" className="block text-sm font-medium text-gray-700">Date of Birth</label>
-              <input type="date" name="dob" id="dob" value={formData.dob} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+              <input type="date" name="dob" id="dob" value={formData.dob} onChange={handleInputChange} required className="mt-1 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
             </div>
              <div>
               <label htmlFor="nationality" className="block text-sm font-medium text-gray-700">Nationality</label>
-              <input type="text" name="nationality" id="nationality" value={formData.nationality} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+              {/* <input type="text" name="nationality" id="nationality" value={formData.nationality} onChange={handleInputChange} required className="mt-1 p-2  block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" /> */}
+                  <select name="nationality" id="nationality" value={formData.nationality}  onChange={handleInputChange} required className="mt-1 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    <option value="">Select Nationality</option>
+                    <option value="Indian">Indian</option>
+                    <option value="American">American</option>
+                    <option value="British">British</option>
+                    <option value="Other">Other</option>
+                  </select>
             </div>
              <div>
               <label htmlFor="address" className="block text-sm font-medium text-gray-700">Address</label>
-              <textarea name="address" id="address" rows="3" value={formData.address} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"></textarea>
+              <textarea name="address" id="address" rows="3" value={formData.address} onChange={handleInputChange} required className="mt-1 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"></textarea>
             </div>
              <div>
               <label htmlFor="clientType" className="block text-sm font-medium text-gray-700">Client Type (e.g., Employment)</label>
-              <input type="text" name="clientType" id="clientType" value={formData.clientType} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+              {/* <input type="text" name="clientType" id="clientType" value={formData.clientType} onChange={handleInputChange} required className="mt-1 p-2  block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" /> */}
+              <select name="clientType" id="clientType" value={formData.clientType} onChange={handleInputChange} required className="mt-1 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    <option value="">Select Client Type</option>
+                    <option value="Salaried">Salaried</option>
+                    <option value="Self-Employed">Self-Employed</option>
+                    <option value="Business">Business</option>
+                    <option value="Retired">Retired</option>
+                    <option value="Student">Student</option>
+                    <option value="Other">Other</option>
+                </select>
             </div>
             <div>
               <label htmlFor="govtIdFile" className="block text-sm font-medium text-gray-700">Upload Govt ID (PDF)</label>
-              <input type="file" name="govtIdFile" id="govtIdFile" accept=".pdf" onChange={handleInputChange} required className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+              <input type="file" name="govtIdFile" id="govtIdFile" accept=".pdf" onChange={handleInputChange} required className="mt-1 p-2 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
               {formData.govtIdFile && <p className="mt-2 text-sm text-gray-500">Selected file: {formData.govtIdFile.name}</p>}
             </div>
              <div>
-              <label htmlFor="contactDetails" className="block text-sm font-medium text-gray-700">Additional Contact Details</label>
-              <input type="text" name="contactDetails" id="contactDetails" value={formData.contactDetails} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+              <label htmlFor="contactDetails" className="block text-sm font-medium text-gray-700">Permanent Address</label>
+              <input type="text" name="contactDetails" id="contactDetails" value={formData.contactDetails} onChange={handleInputChange} className="mt-1 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
             </div>
           </div>
         );
+      
       case 4:
         return (
           <div className="space-y-4">
             <h3 className="text-xl font-semibold text-gray-800">Section 4: Financial Details</h3>
              <div>
               <label htmlFor="sourceOfFunds" className="block text-sm font-medium text-gray-700">Source of Funds</label>
-              <input type="text" name="sourceOfFunds" id="sourceOfFunds" value={formData.sourceOfFunds} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+              {/* <input type="text" name="sourceOfFunds" id="sourceOfFunds" value={formData.sourceOfFunds} onChange={handleInputChange} required className="mt-1 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" /> */}
+              <select name="sourceOfFunds" id="sourceOfFunds" value={formData.sourceOfFunds} onChange={handleInputChange} required className="mt-1 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    <option value="">Select source of funds</option>
+                    <option value="Salaried">Salary</option>
+                    <option value="Self-Employed">Rent/property</option>
+                    <option value="Business">Inheritance</option>
+                    <option value="Retired">Pension</option>
+                    <option value="Student">Gift</option>
+                    <option value="Other">Other</option>
+                </select>
             </div>
              <div>
-              <label htmlFor="occupationDetails" className="block text-sm font-medium text-gray-700">Occupation Details</label>
-              <input type="text" name="occupationDetails" id="occupationDetails" value={formData.occupationDetails} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
+              <label htmlFor="occupationDetails" className="block text-sm font-medium text-gray-700">Sector of Employment</label>
+              <input type="text" name="occupationDetails" id="occupationDetails" value={formData.occupationDetails} onChange={handleInputChange} required className="mt-1 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" />
             </div>
             <div>
               <label htmlFor="incomeProofFile" className="block text-sm font-medium text-gray-700">Upload Income Proof (e.g., Salary Slip, Tax Return PDF)</label>
@@ -430,7 +555,7 @@ export default function OnboardingContent({ user }) {
                         onChange={(e) => handleFundSelectionChange(fund.id, e.target.value)}
                         min="0"
                         step="100"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                        className="mt-1 p-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                       />
                     </div>
                      {formData.selectedFunds.some(sf => sf.id === fund.id) && (
@@ -502,7 +627,7 @@ export default function OnboardingContent({ user }) {
                         className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded mt-1"
                     />
                     <label htmlFor="terms-and-conditions" className="ml-2 block text-sm text-gray-900">
-                        I agree to the <a href="#" className="text-indigo-600 hover:text-indigo-500">Terms and Conditions</a>. (Placeholder link)
+                        I agree to the <a href="#" className="text-indigo-600 hover:text-indigo-500">Terms and Conditions</a>. 
                     </label>
                 </div>
 
@@ -510,9 +635,10 @@ export default function OnboardingContent({ user }) {
                  <button
                      type="button"
                      onClick={handleDownloadPdf}
-                     className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                     disabled={isGeneratingPdf}
+                     className={`px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${isGeneratingPdf ? 'opacity-50 cursor-not-allowed' : ''}`}
                  >
-                     Download Summary as PDF
+                     {isGeneratingPdf ? 'Generating PDF...' : 'Download Summary as PDF'}
                  </button>
 
             </div>
@@ -523,7 +649,7 @@ export default function OnboardingContent({ user }) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto px-4 py-8">
       <h2 className="text-2xl font-bold text-gray-900 text-center">Client Onboarding</h2>
 
       {/* Progress Indicator */}
@@ -545,7 +671,7 @@ export default function OnboardingContent({ user }) {
         {/* Navigation Buttons */}
         <div className="flex justify-between mt-6">
           {step > 1 && (
-            <button
+            <button 
               type="button"
               onClick={prevStep}
               className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 border border-gray-300 rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
@@ -578,6 +704,15 @@ export default function OnboardingContent({ user }) {
           )}
         </div>
       </form>
+
+      {/* Add Toast component */}
+      {toast.show && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={hideToast}
+        />
+      )}
     </div>
   );
 }
